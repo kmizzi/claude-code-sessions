@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://youtu.be/d_P5CxY5efs">Video Overview</a> &bull;
+  <a href="https://youtu.be/yau-6XJg9mA">Video Overview</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://youtu.be/d_P5CxY5efs"><img src="https://img.shields.io/badge/video-overview-red?logo=youtube" alt="Video Overview"></a>
+  <a href="https://youtu.be/yau-6XJg9mA"><img src="https://img.shields.io/badge/video-overview-red?logo=youtube" alt="Video Overview"></a>
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node >= 20">
   <img src="https://img.shields.io/badge/next.js-15-black.svg" alt="Next.js 15">
@@ -27,7 +27,7 @@
 
 ---
 
-> **📺 [Watch the video overview](https://youtu.be/d_P5CxY5efs)** — a quick walkthrough of all features in action.
+> **📺 [Watch the video overview](https://youtu.be/yau-6XJg9mA)** — a quick walkthrough of all features in action.
 
 ---
 
