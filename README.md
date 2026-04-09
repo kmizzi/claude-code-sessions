@@ -27,6 +27,16 @@
 
 ---
 
+<p align="center">
+  <a href="https://youtu.be/d_P5CxY5efs">
+    <img src="https://img.youtube.com/vi/d_P5CxY5efs/maxresdefault.jpg" alt="Video Overview" width="720">
+  </a>
+  <br>
+  <sub>Click to watch the video overview</sub>
+</p>
+
+---
+
 ## The Problem
 
 Claude Code stores every conversation as JSONL files under `~/.claude/projects/`. Over time you accumulate thousands of sessions across dozens of projects, but there's no way to:
