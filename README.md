@@ -27,6 +27,10 @@
 
 ---
 
+> **📺 [Watch the video overview](https://youtu.be/d_P5CxY5efs)** — a quick walkthrough of all features in action.
+
+---
+
 ## The Problem
 
 Claude Code stores every conversation as JSONL files under `~/.claude/projects/`. Over time you accumulate thousands of sessions across dozens of projects, but there's no way to:
