@@ -14,7 +14,7 @@
   },
   "scripts": {
     "dev": "next dev --turbopack -p 5858",
-    "build": "next build",
+    "build": "next build && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public",
     "start": "next start -p 5858",
     "serve": "node ./bin/claude-code-sessions.mjs serve",
     "lint": "next lint",

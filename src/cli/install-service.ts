@@ -3,7 +3,6 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
-  APP_HOME,
   APP_LOGS_DIR,
   LAUNCHD_LABEL,
   LAUNCHD_PLIST_PATH,
@@ -43,6 +42,10 @@ export async function installServiceCommand(opts: InstallOptions): Promise<void>
   mkdirSync(dirname(LAUNCHD_PLIST_PATH), { recursive: true });
   mkdirSync(APP_LOGS_DIR, { recursive: true });
 
+  // Working directory must be the project root so tsx can resolve tsconfig
+  // path aliases (e.g. @/lib/...) when running from source.
+  const projectRoot = resolve(process.cwd());
+
   const plist = buildPlist({
     label: LAUNCHD_LABEL,
     nodePath,
@@ -50,7 +53,7 @@ export async function installServiceCommand(opts: InstallOptions): Promise<void>
     port: opts.port,
     stdoutLog: resolve(APP_LOGS_DIR, "stdout.log"),
     stderrLog: resolve(APP_LOGS_DIR, "stderr.log"),
-    workingDir: APP_HOME,
+    workingDir: projectRoot,
   });
 
   writeFileSync(LAUNCHD_PLIST_PATH, plist, { mode: 0o644 });
@@ -79,11 +82,13 @@ export async function installServiceCommand(opts: InstallOptions): Promise<void>
 }
 
 function resolveBinPath(): string | null {
-  // Walk up from this file to find either:
-  //   1. A sibling `bin/claude-code-sessions.mjs` (dev / npm link)
-  //   2. A global install via `which claude-code-sessions`
+  // 1. Check the project's own bin/ directory (git clone / dev setup)
+  //    Walk up from CWD or use process.argv[1] to find the project root
+  const projectBin = resolve(process.cwd(), "bin/claude-code-sessions.mjs");
+  if (existsSync(projectBin)) return projectBin;
+
+  // 2. Check if globally installed on PATH
   try {
-    // Prefer which — it's what the user actually has on PATH
     const which = spawnSync("which", ["claude-code-sessions"], {
       encoding: "utf8",
     });
@@ -91,10 +96,7 @@ function resolveBinPath(): string | null {
     if (p && existsSync(p)) return p;
   } catch {}
 
-  // Fallback: look relative to this file
-  // (We can't use import.meta.url here in a generic way since the compiled
-  // location differs; but the launcher in bin/claude-code-sessions.mjs is
-  // stable.)
+  // 3. Fallback: common global install paths
   const candidates = [
     resolve(homedir(), ".local/bin/claude-code-sessions"),
     "/usr/local/bin/claude-code-sessions",

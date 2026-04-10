@@ -10,13 +10,11 @@ import {
   SessionListFilters,
   type SessionFilters,
 } from "@/components/session-list/filters";
-import { TokenUsage } from "@/components/token-usage";
 import type {
   AppStats,
   IndexStatus,
   ProjectRow,
   SessionRow,
-  TokenPeriodStats,
 } from "@/lib/types";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -44,7 +42,6 @@ export default function HomePage() {
   const [mode, setMode] = useState<SearchMode>("keyword");
   const [refreshTick, setRefreshTick] = useState(0);
   const [focusedIndex, setFocusedIndex] = useState(-1);
-  const [tokenPeriods, setTokenPeriods] = useState<TokenPeriodStats[] | null>(null);
 
   // Reset focused index when the user changes query/filters/project (not on SSE refresh)
   useEffect(() => {
@@ -82,20 +79,17 @@ export default function HomePage() {
 
   const fetchSideData = useCallback(async () => {
     try {
-      const [pRes, sRes, iRes, uRes] = await Promise.all([
+      const [pRes, sRes, iRes] = await Promise.all([
         fetch("/api/projects"),
         fetch("/api/stats"),
         fetch("/api/index/status"),
-        fetch("/api/stats/usage"),
       ]);
       const pJson = await pRes.json();
       const sJson = await sRes.json();
       const iJson = await iRes.json();
-      const uJson = await uRes.json();
       setProjects(pJson.projects ?? []);
       setStats(sJson.stats ?? null);
       setIndexStatus(iJson.status ?? null);
-      setTokenPeriods(uJson.periods ?? null);
     } catch {
       // noop — the SSE /api/events channel will catch us up
     }
@@ -238,7 +232,6 @@ export default function HomePage() {
           </div>
 
           <StatsHeader stats={stats} />
-          <TokenUsage periods={tokenPeriods} />
 
           <SearchBar
             value={query}

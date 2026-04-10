@@ -117,7 +117,8 @@ const UPSERT_SESSION_SQL = `
     models, primary_model,
     input_tokens, output_tokens, cache_create_tokens, cache_read_tokens,
     last_input_tokens, last_cache_create_tokens, last_cache_read_tokens,
-    first_user_prompt, last_user_prompt, gist, duration_ms, has_subagents,
+    first_user_prompt, last_user_prompt, gist, duration_ms,
+    has_subagents,
     updated_at
   ) VALUES (
     @id, @project_id, @file_path, @cwd, @git_branch, @version,
@@ -125,7 +126,8 @@ const UPSERT_SESSION_SQL = `
     @models, @primary_model,
     @input_tokens, @output_tokens, @cache_create_tokens, @cache_read_tokens,
     @last_input_tokens, @last_cache_create_tokens, @last_cache_read_tokens,
-    @first_user_prompt, @last_user_prompt, @gist, @duration_ms, @has_subagents,
+    @first_user_prompt, @last_user_prompt, @gist, @duration_ms,
+    @has_subagents,
     strftime('%s','now') * 1000
   )
   ON CONFLICT(id) DO UPDATE SET
@@ -592,6 +594,222 @@ export function setMeta(key: string, value: string): void {
   getDb()
     .prepare<[string, string]>("INSERT OR REPLACE INTO app_meta VALUES (?, ?)")
     .run(key, value);
+}
+
+// ---------- Analytics ----------
+
+const PRICING = {
+  input: 15,        // $15/M
+  output: 75,       // $75/M
+  cacheRead: 1.5,   // $1.50/M
+  cacheWrite: 18.75, // $18.75/M
+};
+
+function estimateCostFromTokens(input: number, output: number, cacheRead: number, cacheCreate: number): number {
+  return (
+    (input / 1_000_000) * PRICING.input +
+    (output / 1_000_000) * PRICING.output +
+    (cacheRead / 1_000_000) * PRICING.cacheRead +
+    (cacheCreate / 1_000_000) * PRICING.cacheWrite
+  );
+}
+
+export function getAnalytics(): import("@/lib/types").AnalyticsData {
+  const db = getDb();
+
+  // --- Overview ---
+  const totals = db.prepare<[], {
+    total_sessions: number;
+    total_input: number;
+    total_output: number;
+    total_cache_read: number;
+    total_cache_create: number;
+    earliest_ts: number | null;
+    latest_ts: number | null;
+    total_duration: number | null;
+    avg_duration: number | null;
+    median_duration: number | null;
+    avg_messages: number;
+    avg_user_messages: number;
+  }>(`
+    SELECT
+      COUNT(*) AS total_sessions,
+      COALESCE(SUM(input_tokens), 0) AS total_input,
+      COALESCE(SUM(output_tokens), 0) AS total_output,
+      COALESCE(SUM(cache_read_tokens), 0) AS total_cache_read,
+      COALESCE(SUM(cache_create_tokens), 0) AS total_cache_create,
+      MIN(first_ts) AS earliest_ts,
+      MAX(last_ts) AS latest_ts,
+      SUM(duration_ms) AS total_duration,
+      AVG(CASE WHEN duration_ms > 0 THEN duration_ms END) AS avg_duration,
+      0 AS median_duration,
+      AVG(message_count) AS avg_messages,
+      AVG(user_message_count) AS avg_user_messages
+    FROM sessions WHERE deleted_at IS NULL
+  `).get()!;
+
+  // Median duration (separate query)
+  const medianRow = db.prepare<[], { median: number | null }>(`
+    SELECT duration_ms AS median FROM sessions
+    WHERE deleted_at IS NULL AND duration_ms > 0
+    ORDER BY duration_ms
+    LIMIT 1 OFFSET (
+      SELECT COUNT(*) / 2 FROM sessions WHERE deleted_at IS NULL AND duration_ms > 0
+    )
+  `).get();
+
+  const totalTokens = totals.total_input + totals.total_output + totals.total_cache_read;
+  const totalCost = estimateCostFromTokens(totals.total_input, totals.total_output, totals.total_cache_read, totals.total_cache_create);
+
+  // Active days (distinct dates with sessions)
+  const activeDaysRow = db.prepare<[], { days: number }>(`
+    SELECT COUNT(DISTINCT date(first_ts / 1000, 'unixepoch', 'localtime')) AS days
+    FROM sessions WHERE deleted_at IS NULL AND first_ts IS NOT NULL
+  `).get();
+  const activeDays = activeDaysRow?.days ?? 1;
+
+  const avgDailyTokens = activeDays > 0 ? totalTokens / activeDays : 0;
+  const avgDailyCost = activeDays > 0 ? totalCost / activeDays : 0;
+  const avgDailySessions = activeDays > 0 ? totals.total_sessions / activeDays : 0;
+
+  // --- Token periods (reuse existing) ---
+  const tokenPeriods = getTokenUsageByPeriod();
+
+  // --- Longest session ---
+  const longestRow = db.prepare<[], { id: string; duration_ms: number; gist: string | null; project_name: string }>(`
+    SELECT s.id, s.duration_ms, s.gist, p.display_name AS project_name
+    FROM sessions s JOIN projects p ON p.id = s.project_id
+    WHERE s.deleted_at IS NULL AND s.duration_ms IS NOT NULL
+    ORDER BY s.duration_ms DESC LIMIT 1
+  `).get();
+
+  // --- Avg tokens per session ---
+  const avgTokensPerSession = totals.total_sessions > 0
+    ? totalTokens / totals.total_sessions : 0;
+
+  // --- Activity patterns ---
+  const dayOfWeekRows = db.prepare<[], { dow: number; sessions: number; tokens: number }>(`
+    SELECT
+      CAST(strftime('%w', first_ts / 1000, 'unixepoch', 'localtime') AS INTEGER) AS dow,
+      COUNT(*) AS sessions,
+      COALESCE(SUM(input_tokens + output_tokens + cache_read_tokens), 0) AS tokens
+    FROM sessions
+    WHERE deleted_at IS NULL AND first_ts IS NOT NULL
+    GROUP BY dow ORDER BY dow
+  `).all();
+
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const byDayOfWeek = dayNames.map((day, i) => {
+    const row = dayOfWeekRows.find((r) => r.dow === i);
+    return { day, sessions: row?.sessions ?? 0, tokens: row?.tokens ?? 0 };
+  });
+
+  const hourOfDayRows = db.prepare<[], { hour: number; sessions: number; tokens: number }>(`
+    SELECT
+      CAST(strftime('%H', first_ts / 1000, 'unixepoch', 'localtime') AS INTEGER) AS hour,
+      COUNT(*) AS sessions,
+      COALESCE(SUM(input_tokens + output_tokens + cache_read_tokens), 0) AS tokens
+    FROM sessions
+    WHERE deleted_at IS NULL AND first_ts IS NOT NULL
+    GROUP BY hour ORDER BY hour
+  `).all();
+
+  const byHourOfDay = Array.from({ length: 24 }, (_, i) => {
+    const row = hourOfDayRows.find((r) => r.hour === i);
+    return { hour: i, sessions: row?.sessions ?? 0, tokens: row?.tokens ?? 0 };
+  });
+
+  // --- Model distribution ---
+  const modelRows = db.prepare<[], {
+    model: string; sessions: number;
+    total_input: number; total_output: number;
+    total_cache_read: number; total_cache_create: number;
+  }>(`
+    SELECT primary_model AS model, COUNT(*) AS sessions,
+      COALESCE(SUM(input_tokens), 0) AS total_input,
+      COALESCE(SUM(output_tokens), 0) AS total_output,
+      COALESCE(SUM(cache_read_tokens), 0) AS total_cache_read,
+      COALESCE(SUM(cache_create_tokens), 0) AS total_cache_create
+    FROM sessions
+    WHERE deleted_at IS NULL AND primary_model IS NOT NULL
+    GROUP BY primary_model ORDER BY sessions DESC
+  `).all();
+
+  const modelDistribution = modelRows.map((r) => ({
+    model: r.model,
+    sessions: r.sessions,
+    totalTokens: r.total_input + r.total_output + r.total_cache_read,
+    cost: estimateCostFromTokens(r.total_input, r.total_output, r.total_cache_read, r.total_cache_create),
+  }));
+
+  // --- Project leaderboard ---
+  const projectRows = db.prepare<[], {
+    name: string; sessions: number;
+    total_input: number; total_output: number;
+    total_cache_read: number; total_cache_create: number;
+    avg_duration: number | null;
+  }>(`
+    SELECT p.display_name AS name, COUNT(*) AS sessions,
+      COALESCE(SUM(s.input_tokens), 0) AS total_input,
+      COALESCE(SUM(s.output_tokens), 0) AS total_output,
+      COALESCE(SUM(s.cache_read_tokens), 0) AS total_cache_read,
+      COALESCE(SUM(s.cache_create_tokens), 0) AS total_cache_create,
+      AVG(CASE WHEN s.duration_ms > 0 THEN s.duration_ms END) AS avg_duration
+    FROM sessions s JOIN projects p ON p.id = s.project_id
+    WHERE s.deleted_at IS NULL
+    GROUP BY p.id ORDER BY sessions DESC
+    LIMIT 15
+  `).all();
+
+  const projectLeaderboard = projectRows.map((r) => ({
+    name: r.name,
+    sessions: r.sessions,
+    totalTokens: r.total_input + r.total_output + r.total_cache_read,
+    cost: estimateCostFromTokens(r.total_input, r.total_output, r.total_cache_read, r.total_cache_create),
+    avgDurationMs: r.avg_duration,
+  }));
+
+  // --- Cache efficiency ---
+  const cacheHitRate = (totals.total_cache_read + totals.total_input) > 0
+    ? totals.total_cache_read / (totals.total_cache_read + totals.total_input) : 0;
+  // Estimated savings: cache reads cost $1.50/M instead of $15/M input rate
+  const estimatedSavings = (totals.total_cache_read / 1_000_000) * (PRICING.input - PRICING.cacheRead);
+
+  return {
+    overview: {
+      totalCost,
+      avgDailyTokens,
+      avgDailyCost,
+      avgDailySessions,
+      activeDays,
+      totalTokens,
+    },
+    tokenPeriods,
+    sessionStats: {
+      totalSessions: totals.total_sessions,
+      avgDurationMs: totals.avg_duration,
+      medianDurationMs: medianRow?.median ?? null,
+      longestSession: longestRow ? {
+        id: longestRow.id,
+        durationMs: longestRow.duration_ms,
+        gist: longestRow.gist,
+        projectName: longestRow.project_name,
+      } : null,
+      avgMessagesPerSession: totals.avg_messages,
+      avgUserMessagesPerSession: totals.avg_user_messages,
+      avgTokensPerSession,
+    },
+    activity: { byDayOfWeek, byHourOfDay },
+    modelDistribution,
+    projectLeaderboard,
+    cacheEfficiency: {
+      totalCacheRead: totals.total_cache_read,
+      totalCacheCreate: totals.total_cache_create,
+      totalInput: totals.total_input,
+      cacheHitRate,
+      estimatedSavings,
+    },
+  };
 }
 
 // Silence unused-import warning when VEC_DIMENSION isn't referenced in this file.

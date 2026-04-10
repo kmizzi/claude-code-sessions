@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn, formatNumber } from "@/lib/utils";
 import { relativeTime } from "@/lib/time";
 import type { ProjectRow } from "@/lib/types";
-import { Folder, Settings, LayoutGrid, MessageSquareText, Sun, Moon } from "lucide-react";
+import { Folder, Settings, LayoutGrid, MessageSquareText, Sun, Moon, BarChart3 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
@@ -46,6 +46,15 @@ export function Sidebar({ projects, activeProjectId, onSelectProject, pathname }
           )}
         >
           <LayoutGrid className="h-4 w-4" /> All sessions
+        </Link>
+        <Link
+          href="/analytics"
+          className={cn(
+            "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+            pathname === "/analytics" && "bg-accent text-foreground",
+          )}
+        >
+          <BarChart3 className="h-4 w-4" /> Analytics
         </Link>
         <Link
           href="/settings"

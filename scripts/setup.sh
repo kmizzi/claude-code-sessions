@@ -2,10 +2,11 @@
 set -euo pipefail
 
 # Claude Code Sessions — one-command setup
-# Usage: ./scripts/setup.sh [--service]
+# Usage: ./scripts/setup.sh [--no-service]
 #
-# Installs dependencies, builds the app, and optionally installs
-# as a macOS launchd service that starts on login.
+# Installs dependencies, builds the app, and installs as a macOS
+# launchd service that starts on login. Pass --no-service to skip
+# the service install and run manually instead.
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${PORT:-5858}"
@@ -36,21 +37,24 @@ npm run build 2>&1 | tail -5
 
 ok "Build complete!"
 
-# Service install (macOS only)
-if [[ "${1:-}" == "--service" ]]; then
-  if [[ "$(uname)" != "Darwin" ]]; then
-    warn "launchd service is macOS only — skipping service install."
-  else
-    info "Installing launchd service on port $PORT..."
-    node ./bin/claude-code-sessions.mjs install-service --port "$PORT"
-    ok "Service installed! Open http://localhost:$PORT"
-  fi
-else
+# Service install (macOS only, default on)
+if [[ "${1:-}" == "--no-service" ]]; then
   ok "Ready! Start with: npm start"
   echo ""
   echo "  npm run dev          # development mode (hot reload)"
   echo "  npm start            # production mode"
-  echo "  ./scripts/setup.sh --service  # install as background service"
   echo ""
   echo "  Open http://localhost:$PORT"
+elif [[ "$(uname)" != "Darwin" ]]; then
+  warn "launchd service is macOS only — skipping service install."
+  ok "Start manually with: npm start"
+else
+  info "Installing launchd service on port $PORT..."
+  node ./bin/claude-code-sessions.mjs install-service --port "$PORT"
+  ok "Service installed! Dashboard starts automatically on login."
+  echo ""
+  echo "  Open http://localhost:$PORT"
+  echo ""
+  echo "  To uninstall the service later:"
+  echo "    node ./bin/claude-code-sessions.mjs uninstall-service"
 fi

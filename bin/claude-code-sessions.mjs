@@ -10,7 +10,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 // Prefer the built standalone entry, fall back to ts dev mode via tsx/next
 const candidates = [
   resolve(here, "../dist/cli/index.js"),
-  resolve(here, "../.next/standalone/server.js"),
   resolve(here, "../src/cli/index.ts"),
 ];
 

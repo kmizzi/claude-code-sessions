@@ -148,3 +148,63 @@ export interface SearchHit {
   score: number;
   snippet?: string;
 }
+
+// ---------- Analytics ----------
+
+export interface AnalyticsData {
+  /** Usage & cost overview */
+  overview: {
+    totalCost: number;
+    avgDailyTokens: number;
+    avgDailyCost: number;
+    avgDailySessions: number;
+    activeDays: number;
+    totalTokens: number;
+  };
+
+  /** Token usage by period (same as home page, moved here) */
+  tokenPeriods: TokenPeriodStats[];
+
+  /** Session statistics */
+  sessionStats: {
+    totalSessions: number;
+    avgDurationMs: number | null;
+    medianDurationMs: number | null;
+    longestSession: { id: string; durationMs: number; gist: string | null; projectName: string } | null;
+    avgMessagesPerSession: number;
+    avgUserMessagesPerSession: number;
+    avgTokensPerSession: number;
+  };
+
+  /** Activity patterns */
+  activity: {
+    byDayOfWeek: { day: string; sessions: number; tokens: number }[];
+    byHourOfDay: { hour: number; sessions: number; tokens: number }[];
+  };
+
+  /** Model distribution */
+  modelDistribution: {
+    model: string;
+    sessions: number;
+    totalTokens: number;
+    cost: number;
+  }[];
+
+  /** Project leaderboard */
+  projectLeaderboard: {
+    name: string;
+    sessions: number;
+    totalTokens: number;
+    cost: number;
+    avgDurationMs: number | null;
+  }[];
+
+  /** Cache efficiency */
+  cacheEfficiency: {
+    totalCacheRead: number;
+    totalCacheCreate: number;
+    totalInput: number;
+    cacheHitRate: number;
+    estimatedSavings: number;
+  };
+}
