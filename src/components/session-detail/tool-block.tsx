@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight, Wrench, FileText, Terminal } from "lucide-react";
 import { cn, truncate } from "@/lib/utils";
 
 interface ToolUseProps {
   name: string;
   input: unknown;
+  defaultOpen?: boolean;
 }
 
 function iconFor(name: string) {
@@ -29,8 +30,9 @@ function firstLineInput(input: unknown): string {
   return JSON.stringify(input);
 }
 
-export function ToolUseBlock({ name, input }: ToolUseProps) {
-  const [open, setOpen] = useState(false);
+export function ToolUseBlock({ name, input, defaultOpen = false }: ToolUseProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  useEffect(() => setOpen(defaultOpen), [defaultOpen]);
   const Icon = iconFor(name);
   const summary = firstLineInput(input);
 
@@ -64,10 +66,12 @@ export function ToolUseBlock({ name, input }: ToolUseProps) {
 interface ToolResultProps {
   content: unknown;
   isError?: boolean;
+  defaultOpen?: boolean;
 }
 
-export function ToolResultBlock({ content, isError }: ToolResultProps) {
-  const [open, setOpen] = useState(false);
+export function ToolResultBlock({ content, isError, defaultOpen = false }: ToolResultProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  useEffect(() => setOpen(defaultOpen), [defaultOpen]);
   const text =
     typeof content === "string"
       ? content

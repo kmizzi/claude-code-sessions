@@ -149,6 +149,34 @@ export interface SearchHit {
   snippet?: string;
 }
 
+/**
+ * Per-element visibility for the transcript view. The same toggles drive
+ * what's rendered on screen and what gets serialized when the user clicks
+ * Export — the export is WYSIWYG.
+ */
+export interface ViewFilters {
+  showUser: boolean;
+  showAssistant: boolean;
+  showToolUses: boolean;
+  showToolResults: boolean;
+  showSidechains: boolean;
+  showSystem: boolean;
+  showTimestamps: boolean;
+  /** When true, tool use/result blocks render with full content inline instead of collapsed. */
+  expandTools: boolean;
+}
+
+export const DEFAULT_VIEW_FILTERS: ViewFilters = {
+  showUser: true,
+  showAssistant: true,
+  showToolUses: true,
+  showToolResults: true,
+  showSidechains: true,
+  showSystem: false,
+  showTimestamps: true,
+  expandTools: false,
+};
+
 // ---------- Analytics ----------
 
 export interface AnalyticsData {

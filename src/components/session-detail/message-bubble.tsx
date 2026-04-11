@@ -2,11 +2,12 @@
 
 import { cn } from "@/lib/utils";
 import { ToolUseBlock, ToolResultBlock } from "./tool-block";
-import type { JsonlLine } from "@/lib/types";
+import type { JsonlLine, ViewFilters } from "@/lib/types";
 import { Bot, User, Terminal } from "lucide-react";
 
 interface Props {
   line: JsonlLine;
+  filters: ViewFilters;
 }
 
 type ContentBlock = {
@@ -26,29 +27,43 @@ function normalizeContent(content: unknown): ContentBlock[] {
   return [];
 }
 
-export function MessageBubble({ line }: Props) {
+export function MessageBubble({ line, filters }: Props) {
   const role = line.message?.role ?? (line.type as string);
   const isUser = role === "user";
   const isAssistant = role === "assistant";
   const isSystem = !isUser && !isAssistant;
 
-  const blocks = normalizeContent(line.message?.content);
-  if (blocks.length === 0) return null;
+  const allBlocks = normalizeContent(line.message?.content);
+  if (allBlocks.length === 0) return null;
 
-  // Skip synthetic tool-result-only user messages? No — render them collapsed under the prior assistant turn.
-  // For simplicity, tool_result blocks render inline in the user bubble.
+  // Apply filters to decide which blocks actually render.
+  const blocks = allBlocks.filter((b) => {
+    if (!b || typeof b !== "object") return false;
+    if (b.type === "text") {
+      if (isUser) return filters.showUser;
+      if (isAssistant) return filters.showAssistant;
+      if (isSystem) return filters.showSystem;
+      return true;
+    }
+    if (b.type === "tool_use") return filters.showToolUses;
+    if (b.type === "tool_result") return filters.showToolResults;
+    return false;
+  });
+
+  if (blocks.length === 0) return null;
 
   const hasOnlyToolResults =
     isUser && blocks.every((b) => b?.type === "tool_result");
 
-  const timestamp = line.timestamp
-    ? new Date(line.timestamp).toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : "";
+  const timestamp =
+    filters.showTimestamps && line.timestamp
+      ? new Date(line.timestamp).toLocaleString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : "";
 
   const Icon = isUser ? User : isAssistant ? Bot : Terminal;
   const roleLabel = isUser
@@ -84,9 +99,11 @@ export function MessageBubble({ line }: Props) {
               sidechain
             </span>
           )}
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {timestamp}
-          </span>
+          {timestamp && (
+            <span className="font-mono text-[11px] text-muted-foreground">
+              {timestamp}
+            </span>
+          )}
         </div>
         <div className="space-y-1.5 text-[15px] leading-relaxed">
           {blocks.map((block, i) => {
@@ -107,6 +124,7 @@ export function MessageBubble({ line }: Props) {
                   key={i}
                   name={block.name ?? "tool"}
                   input={block.input}
+                  defaultOpen={filters.expandTools}
                 />
               );
             }
@@ -116,6 +134,7 @@ export function MessageBubble({ line }: Props) {
                   key={i}
                   content={block.content}
                   isError={block.is_error}
+                  defaultOpen={filters.expandTools}
                 />
               );
             }
