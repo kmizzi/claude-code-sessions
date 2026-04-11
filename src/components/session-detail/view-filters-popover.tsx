@@ -22,7 +22,16 @@ const GROUPS: Array<{ title: string; options: Option[] }> = [
     title: "Messages",
     options: [
       { key: "showHuman", label: "Your prompts" },
-      { key: "showAssistant", label: "Assistant replies" },
+      {
+        key: "showAssistantFinal",
+        label: "Assistant final replies",
+        hint: "The terminal reply that closes each of your turns",
+      },
+      {
+        key: "showAssistantIntermediate",
+        label: "Assistant intermediate commentary",
+        hint: "Text & thinking between tool calls — noisy",
+      },
       { key: "showSidechains", label: "Subagent runs" },
     ],
   },

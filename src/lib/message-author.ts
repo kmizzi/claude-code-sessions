@@ -11,7 +11,8 @@ import type { JsonlLine, ViewFilters } from "@/lib/types";
 
 export type AuthorKind =
   | "human"
-  | "assistant"
+  | "assistant-final"
+  | "assistant-intermediate"
   | "system"
   | "compact-summary"
   | "task-notification"
@@ -23,33 +24,6 @@ export interface AuthorInfo {
   label: string;
   /** Optional secondary label (e.g. the slash command name). */
   detail?: string;
-}
-
-/**
- * Whether text blocks from a line with this author kind should render under
- * the current filters. Tool_use / tool_result blocks are gated separately by
- * `showToolUses` / `showToolResults`, not by the author kind.
- */
-export function isAuthorTextVisible(
-  kind: AuthorKind,
-  filters: ViewFilters,
-): boolean {
-  switch (kind) {
-    case "human":
-      return filters.showHuman;
-    case "assistant":
-      return filters.showAssistant;
-    case "system":
-      return filters.showSystem;
-    case "compact-summary":
-      return filters.showCompactSummary;
-    case "task-notification":
-      return filters.showTaskNotification;
-    case "slash-command":
-      return filters.showSlashCommand;
-    case "command-output":
-      return filters.showCommandOutput;
-  }
 }
 
 function extractText(content: unknown): string {
@@ -64,6 +38,35 @@ function extractText(content: unknown): string {
   return parts.join("\n");
 }
 
+/**
+ * Whether text blocks from a line with this author kind should render under
+ * the current filters. Tool_use / tool_result blocks are gated separately by
+ * `showToolUses` / `showToolResults`, not by the author kind.
+ */
+export function isAuthorTextVisible(
+  kind: AuthorKind,
+  filters: ViewFilters,
+): boolean {
+  switch (kind) {
+    case "human":
+      return filters.showHuman;
+    case "assistant-final":
+      return filters.showAssistantFinal;
+    case "assistant-intermediate":
+      return filters.showAssistantIntermediate;
+    case "system":
+      return filters.showSystem;
+    case "compact-summary":
+      return filters.showCompactSummary;
+    case "task-notification":
+      return filters.showTaskNotification;
+    case "slash-command":
+      return filters.showSlashCommand;
+    case "command-output":
+      return filters.showCommandOutput;
+  }
+}
+
 export function classifyAuthor(line: JsonlLine): AuthorInfo {
   const role = line.message?.role ?? line.type;
 
@@ -72,7 +75,13 @@ export function classifyAuthor(line: JsonlLine): AuthorInfo {
     const label = model
       ? model.replace(/^claude-/, "").replace(/-\d{8}$/, "")
       : "Claude";
-    return { kind: "assistant", label };
+    // stop_reason === "tool_use" → Claude is mid-turn, waiting for a tool result.
+    // Anything else (end_turn, stop_sequence, max_tokens, missing) → terminal reply.
+    const kind: AuthorKind =
+      line.message?.stop_reason === "tool_use"
+        ? "assistant-intermediate"
+        : "assistant-final";
+    return { kind, label };
   }
 
   if (role === "system") {

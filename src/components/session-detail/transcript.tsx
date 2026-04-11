@@ -3,8 +3,8 @@
 import { useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { JsonlLine, ViewFilters } from "@/lib/types";
-import { MessageBubble } from "./message-bubble";
 import { classifyAuthor, isAuthorTextVisible } from "@/lib/message-author";
+import { MessageBubble } from "./message-bubble";
 import { Loader2 } from "lucide-react";
 
 interface Props {
@@ -17,9 +17,10 @@ interface Props {
 export function Transcript({ lines, loading, error, filters }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // Per-line top-level visibility. Whether a bubble has any renderable blocks
-  // after filtering is checked inside MessageBubble — if it renders null we
-  // still reserve a virtualizer slot (cheap) since the filter is coarse here.
+  // Per-line top-level visibility. A line is coarse-visible if any of its
+  // blocks could render under the current filters — MessageBubble does the
+  // precise per-block filtering and may still render null, in which case we
+  // leave an empty virtualizer slot (cheap).
   const visible = useMemo(() => {
     return lines.filter((l) => {
       if (l.isSidechain && !filters.showSidechains) return false;

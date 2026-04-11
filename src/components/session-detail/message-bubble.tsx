@@ -19,7 +19,8 @@ function iconForAuthor(kind: AuthorKind): LucideIcon {
   switch (kind) {
     case "human":
       return User;
-    case "assistant":
+    case "assistant-final":
+    case "assistant-intermediate":
       return Bot;
     case "compact-summary":
       return ScrollText;
@@ -37,7 +38,8 @@ function iconForAuthor(kind: AuthorKind): LucideIcon {
 const TONE_CLASSES: Record<AuthorKind, string> = {
   human:
     "border-[hsl(var(--brand)/0.3)] bg-[hsl(var(--brand)/0.1)] text-[hsl(var(--brand))]",
-  assistant: "border-sky-500/30 bg-sky-500/10 text-sky-400",
+  "assistant-final": "border-sky-500/40 bg-sky-500/15 text-sky-400",
+  "assistant-intermediate": "border-sky-500/20 bg-sky-500/5 text-sky-400/70",
   "compact-summary": "border-amber-500/30 bg-amber-500/10 text-amber-400",
   "task-notification": "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
   "slash-command": "border-violet-500/30 bg-violet-500/10 text-violet-300",
@@ -121,6 +123,14 @@ export function MessageBubble({ line, filters }: Props) {
           <span className="text-sm font-semibold text-foreground">
             {roleLabel}
           </span>
+          {author.kind === "assistant-final" && (
+            <span
+              className="rounded bg-sky-500/15 px-1.5 py-0.5 font-mono text-[11px] text-sky-400"
+              title="Terminal reply — Claude ended its turn here"
+            >
+              final
+            </span>
+          )}
           {line.isSidechain && (
             <span className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
               sidechain

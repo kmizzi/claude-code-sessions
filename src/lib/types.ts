@@ -20,12 +20,28 @@ export interface JsonlLine {
   version?: string;
   uuid?: string;
   isSidechain?: boolean;
+  /**
+   * Set by Claude Code when the line is an auto-generated compaction summary
+   * injected as a user turn. The content was written by Claude, not the human,
+   * so the UI should label it accordingly.
+   */
   isCompactSummary?: boolean;
+  /**
+   * Set by Claude Code for system-generated content appended into a user turn
+   * (e.g. local-command caveats). Used as a fallback classifier when the
+   * content shape doesn't match a more specific pattern.
+   */
   isMeta?: boolean;
   message?: {
     role?: "user" | "assistant" | "system";
     model?: string;
     content?: unknown;
+    /**
+     * Claude API stop reason. `tool_use` marks an intermediate assistant turn
+     * that's waiting for a tool result; `end_turn` / `stop_sequence` mark
+     * terminal replies that close out the user's turn.
+     */
+    stop_reason?: "end_turn" | "tool_use" | "stop_sequence" | "max_tokens" | string;
     usage?: {
       input_tokens?: number;
       cache_creation_input_tokens?: number;
@@ -154,30 +170,37 @@ export interface SearchHit {
 /**
  * Per-element visibility for the transcript view. The same toggles drive
  * what's rendered on screen and what gets serialized when the user clicks
- * Export — the export is WYSIWYG. Visibility is gated per AuthorKind (see
- * src/lib/message-author.ts) so the Claude-Code-injected noise categories
- * (task notifications, slash commands, command output, etc.) are hideable
- * independently of actual human prompts.
+ * Export — the export is WYSIWYG. Each author kind from `classifyAuthor`
+ * has its own toggle so the user can hide noise categories (task
+ * notifications, slash commands, command output) without also hiding their
+ * actual prompts.
  */
 export interface ViewFilters {
+  // Author-kind toggles. Line visibility is driven by classifyAuthor(line).
   showHuman: boolean;
-  showAssistant: boolean;
+  /** Terminal assistant replies (stop_reason !== "tool_use"). */
+  showAssistantFinal: boolean;
+  /** Intermediate assistant turns (stop_reason === "tool_use") — text/thinking between tool calls. */
+  showAssistantIntermediate: boolean;
   showCompactSummary: boolean;
   showTaskNotification: boolean;
   showSlashCommand: boolean;
   showCommandOutput: boolean;
   showSystem: boolean;
   showSidechains: boolean;
+  // Tool-block toggles (orthogonal to author kind).
   showToolUses: boolean;
   showToolResults: boolean;
   /** When true, tool use/result blocks render with full content inline instead of collapsed. */
   expandTools: boolean;
+  // Display.
   showTimestamps: boolean;
 }
 
 export const DEFAULT_VIEW_FILTERS: ViewFilters = {
   showHuman: true,
-  showAssistant: true,
+  showAssistantFinal: true,
+  showAssistantIntermediate: true,
   showCompactSummary: true,
   showTaskNotification: false,
   showSlashCommand: false,

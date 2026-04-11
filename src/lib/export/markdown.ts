@@ -128,7 +128,10 @@ export function buildSessionMarkdown(
 
     if (keepBlocks.length === 0) continue;
 
-    const label = author.detail ? `${author.label} · ${author.detail}` : author.label;
+    const finalChip = author.kind === "assistant-final" ? " **[final]**" : "";
+    const label = author.detail
+      ? `${author.label} · ${author.detail}${finalChip}`
+      : `${author.label}${finalChip}`;
     const sidechain = line.isSidechain ? " _(sidechain)_" : "";
     const timestamp =
       filters.showTimestamps && line.timestamp
