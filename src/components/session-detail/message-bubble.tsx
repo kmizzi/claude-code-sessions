@@ -3,7 +3,47 @@
 import { cn } from "@/lib/utils";
 import { ToolUseBlock, ToolResultBlock } from "./tool-block";
 import type { JsonlLine, ViewFilters } from "@/lib/types";
-import { Bot, User, Terminal } from "lucide-react";
+import { classifyAuthor, type AuthorKind } from "@/lib/message-author";
+import {
+  Bot,
+  User,
+  Terminal,
+  TerminalSquare,
+  Zap,
+  SlashSquare,
+  ScrollText,
+  type LucideIcon,
+} from "lucide-react";
+
+function iconForAuthor(kind: AuthorKind): LucideIcon {
+  switch (kind) {
+    case "human":
+      return User;
+    case "assistant":
+      return Bot;
+    case "compact-summary":
+      return ScrollText;
+    case "task-notification":
+      return Zap;
+    case "slash-command":
+      return SlashSquare;
+    case "command-output":
+      return TerminalSquare;
+    default:
+      return Terminal;
+  }
+}
+
+const TONE_CLASSES: Record<AuthorKind, string> = {
+  human:
+    "border-[hsl(var(--brand)/0.3)] bg-[hsl(var(--brand)/0.1)] text-[hsl(var(--brand))]",
+  assistant: "border-sky-500/30 bg-sky-500/10 text-sky-400",
+  "compact-summary": "border-amber-500/30 bg-amber-500/10 text-amber-400",
+  "task-notification": "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+  "slash-command": "border-violet-500/30 bg-violet-500/10 text-violet-300",
+  "command-output": "border-border/60 bg-muted/40 text-muted-foreground",
+  system: "border-border/60 bg-muted/40 text-muted-foreground",
+};
 
 interface Props {
   line: JsonlLine;
@@ -28,6 +68,7 @@ function normalizeContent(content: unknown): ContentBlock[] {
 }
 
 export function MessageBubble({ line, filters }: Props) {
+  const author = classifyAuthor(line);
   const role = line.message?.role ?? (line.type as string);
   const isUser = role === "user";
   const isAssistant = role === "assistant";
@@ -53,7 +94,7 @@ export function MessageBubble({ line, filters }: Props) {
   if (blocks.length === 0) return null;
 
   const hasOnlyToolResults =
-    isUser && blocks.every((b) => b?.type === "tool_result");
+    author.kind === "human" && blocks.every((b) => b?.type === "tool_result");
 
   const timestamp =
     filters.showTimestamps && line.timestamp
@@ -65,12 +106,8 @@ export function MessageBubble({ line, filters }: Props) {
         })
       : "";
 
-  const Icon = isUser ? User : isAssistant ? Bot : Terminal;
-  const roleLabel = isUser
-    ? "You"
-    : isAssistant
-      ? line.message?.model?.replace(/^claude-/, "").replace(/-\d{8}$/, "") ?? "Claude"
-      : "System";
+  const Icon = iconForAuthor(author.kind);
+  const roleLabel = author.detail ? `${author.label} · ${author.detail}` : author.label;
 
   return (
     <div
@@ -82,9 +119,7 @@ export function MessageBubble({ line, filters }: Props) {
       <div
         className={cn(
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-md border",
-          isUser && "border-[hsl(var(--brand)/0.3)] bg-[hsl(var(--brand)/0.1)] text-[hsl(var(--brand))]",
-          isAssistant && "border-sky-500/30 bg-sky-500/10 text-sky-400",
-          isSystem && "border-border/60 bg-muted/40 text-muted-foreground",
+          TONE_CLASSES[author.kind],
         )}
       >
         <Icon className="h-3.5 w-3.5" />

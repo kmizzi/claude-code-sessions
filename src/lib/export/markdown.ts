@@ -5,6 +5,7 @@
  */
 
 import type { JsonlLine, SessionRow, ViewFilters } from "@/lib/types";
+import { classifyAuthor } from "@/lib/message-author";
 
 interface ContentBlock {
   type?: string;
@@ -120,12 +121,8 @@ export function buildSessionMarkdown(
 
     if (keepBlocks.length === 0) continue;
 
-    const label =
-      role === "user"
-        ? "You"
-        : role === "assistant"
-          ? line.message.model?.replace(/^claude-/, "").replace(/-\d{8}$/, "") ?? "Claude"
-          : "System";
+    const author = classifyAuthor(line);
+    const label = author.detail ? `${author.label} · ${author.detail}` : author.label;
     const sidechain = line.isSidechain ? " _(sidechain)_" : "";
 
     out.push(`### ${label}${sidechain}`);

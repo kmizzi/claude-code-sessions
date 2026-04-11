@@ -20,6 +20,8 @@ export interface JsonlLine {
   version?: string;
   uuid?: string;
   isSidechain?: boolean;
+  isCompactSummary?: boolean;
+  isMeta?: boolean;
   message?: {
     role?: "user" | "assistant" | "system";
     model?: string;
