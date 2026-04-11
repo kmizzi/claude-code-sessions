@@ -20,7 +20,9 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-const FILTERS_STORAGE_KEY = "session-view-filters";
+// Bump the storage suffix when the ViewFilters shape changes so old persisted
+// state doesn't leak removed keys into the new shape.
+const FILTERS_STORAGE_KEY = "session-view-filters:v2";
 
 function loadPersistedFilters(): ViewFilters {
   if (typeof window === "undefined") return DEFAULT_VIEW_FILTERS;

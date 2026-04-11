@@ -7,7 +7,7 @@
  * attribution stays consistent between the two views.
  */
 
-import type { JsonlLine } from "@/lib/types";
+import type { JsonlLine, ViewFilters } from "@/lib/types";
 
 export type AuthorKind =
   | "human"
@@ -23,6 +23,33 @@ export interface AuthorInfo {
   label: string;
   /** Optional secondary label (e.g. the slash command name). */
   detail?: string;
+}
+
+/**
+ * Whether text blocks from a line with this author kind should render under
+ * the current filters. Tool_use / tool_result blocks are gated separately by
+ * `showToolUses` / `showToolResults`, not by the author kind.
+ */
+export function isAuthorTextVisible(
+  kind: AuthorKind,
+  filters: ViewFilters,
+): boolean {
+  switch (kind) {
+    case "human":
+      return filters.showHuman;
+    case "assistant":
+      return filters.showAssistant;
+    case "system":
+      return filters.showSystem;
+    case "compact-summary":
+      return filters.showCompactSummary;
+    case "task-notification":
+      return filters.showTaskNotification;
+    case "slash-command":
+      return filters.showSlashCommand;
+    case "command-output":
+      return filters.showCommandOutput;
+  }
 }
 
 function extractText(content: unknown): string {

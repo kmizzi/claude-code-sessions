@@ -5,7 +5,7 @@
  */
 
 import type { JsonlLine, SessionRow, ViewFilters } from "@/lib/types";
-import { classifyAuthor } from "@/lib/message-author";
+import { classifyAuthor, isAuthorTextVisible, type AuthorInfo } from "@/lib/message-author";
 
 interface ContentBlock {
   type?: string;
@@ -55,27 +55,41 @@ function formatInput(input: unknown): string {
   }
 }
 
-function shouldShowLine(line: JsonlLine, filters: ViewFilters): boolean {
-  if (line.isSidechain && !filters.showSidechains) return false;
-  const role = line.message?.role ?? line.type;
-  if (role === "user" && !filters.showUser && !filters.showToolResults) return false;
-  if (role === "assistant" && !filters.showAssistant && !filters.showToolUses) return false;
-  if (role === "system" && !filters.showSystem) return false;
-  return true;
+/**
+ * Extract a one-line human-readable summary from a tool_use input — mirrors
+ * the logic in components/session-detail/tool-block.tsx so previews in the
+ * exported markdown match what's shown on screen.
+ */
+function toolInputSummary(input: unknown): string {
+  if (input == null) return "";
+  if (typeof input === "string") return input;
+  if (typeof input !== "object") return String(input);
+  const rec = input as Record<string, unknown>;
+  const keys = ["command", "file_path", "path", "pattern", "query", "description"];
+  for (const k of keys) {
+    const v = rec[k];
+    if (typeof v === "string" && v.trim()) return v;
+  }
+  try {
+    return JSON.stringify(input);
+  } catch {
+    return "";
+  }
 }
 
-/**
- * Filter content blocks to match the current toggles. Returns null if the
- * line has nothing left to render — the caller should skip it entirely so we
- * don't emit empty headers.
- */
-function filterBlocks(blocks: ContentBlock[], filters: ViewFilters): ContentBlock[] {
+function filterBlocks(
+  blocks: ContentBlock[],
+  author: AuthorInfo,
+  filters: ViewFilters,
+): ContentBlock[] {
+  const textVisible = isAuthorTextVisible(author.kind, filters);
   return blocks.filter((b) => {
     if (!b || typeof b !== "object") return false;
-    if (b.type === "text") return true; // text visibility is role-based, handled above
+    if (b.type === "text") return textVisible;
     if (b.type === "tool_use") return filters.showToolUses;
     if (b.type === "tool_result") return filters.showToolResults;
-    return true;
+    // Drop everything else (e.g. thinking blocks) so we don't emit empty sections.
+    return false;
   });
 }
 
@@ -102,33 +116,27 @@ export function buildSessionMarkdown(
   out.push("---\n");
 
   for (const line of lines) {
-    if (!shouldShowLine(line, filters)) continue;
+    if (line.isSidechain && !filters.showSidechains) continue;
     if (!line.message?.content) continue;
 
-    const role = line.message.role ?? (line.type as string);
-    const blocks = filterBlocks(normalizeContent(line.message.content), filters);
-
-    // Further filter text blocks based on role visibility.
-    const keepBlocks: ContentBlock[] = [];
-    for (const b of blocks) {
-      if (b.type === "text") {
-        if (role === "user" && !filters.showUser) continue;
-        if (role === "assistant" && !filters.showAssistant) continue;
-        if (role === "system" && !filters.showSystem) continue;
-      }
-      keepBlocks.push(b);
-    }
+    const author = classifyAuthor(line);
+    const keepBlocks = filterBlocks(
+      normalizeContent(line.message.content),
+      author,
+      filters,
+    );
 
     if (keepBlocks.length === 0) continue;
 
-    const author = classifyAuthor(line);
     const label = author.detail ? `${author.label} · ${author.detail}` : author.label;
     const sidechain = line.isSidechain ? " _(sidechain)_" : "";
+    const timestamp =
+      filters.showTimestamps && line.timestamp
+        ? ` · _${new Date(line.timestamp).toLocaleString()}_`
+        : "";
 
-    out.push(`### ${label}${sidechain}`);
-    if (filters.showTimestamps && line.timestamp) {
-      out.push(`_${new Date(line.timestamp).toLocaleString()}_\n`);
-    }
+    out.push(`#### ${label}${sidechain}${timestamp}`);
+    out.push("");
 
     for (const block of keepBlocks) {
       if (block.type === "text" && block.text) {
@@ -142,7 +150,7 @@ export function buildSessionMarkdown(
           out.push(formatInput(block.input));
           out.push("```");
         } else {
-          const preview = formatInput(block.input).split("\n")[0]?.slice(0, 120) ?? "";
+          const preview = toolInputSummary(block.input).replace(/\s+/g, " ").slice(0, 120);
           out.push(`_Tool: \`${name}\`${preview ? ` — ${preview}` : ""}_`);
         }
         out.push("");

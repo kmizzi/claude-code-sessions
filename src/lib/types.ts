@@ -154,29 +154,40 @@ export interface SearchHit {
 /**
  * Per-element visibility for the transcript view. The same toggles drive
  * what's rendered on screen and what gets serialized when the user clicks
- * Export — the export is WYSIWYG.
+ * Export — the export is WYSIWYG. Visibility is gated per AuthorKind (see
+ * src/lib/message-author.ts) so the Claude-Code-injected noise categories
+ * (task notifications, slash commands, command output, etc.) are hideable
+ * independently of actual human prompts.
  */
 export interface ViewFilters {
-  showUser: boolean;
+  showHuman: boolean;
   showAssistant: boolean;
+  showCompactSummary: boolean;
+  showTaskNotification: boolean;
+  showSlashCommand: boolean;
+  showCommandOutput: boolean;
+  showSystem: boolean;
+  showSidechains: boolean;
   showToolUses: boolean;
   showToolResults: boolean;
-  showSidechains: boolean;
-  showSystem: boolean;
-  showTimestamps: boolean;
   /** When true, tool use/result blocks render with full content inline instead of collapsed. */
   expandTools: boolean;
+  showTimestamps: boolean;
 }
 
 export const DEFAULT_VIEW_FILTERS: ViewFilters = {
-  showUser: true,
+  showHuman: true,
   showAssistant: true,
+  showCompactSummary: true,
+  showTaskNotification: false,
+  showSlashCommand: false,
+  showCommandOutput: false,
+  showSystem: false,
+  showSidechains: true,
   showToolUses: true,
   showToolResults: true,
-  showSidechains: true,
-  showSystem: false,
-  showTimestamps: true,
   expandTools: false,
+  showTimestamps: true,
 };
 
 // ---------- Analytics ----------

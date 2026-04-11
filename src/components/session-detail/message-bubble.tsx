@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { ToolUseBlock, ToolResultBlock } from "./tool-block";
 import type { JsonlLine, ViewFilters } from "@/lib/types";
-import { classifyAuthor, type AuthorKind } from "@/lib/message-author";
+import { classifyAuthor, isAuthorTextVisible, type AuthorKind } from "@/lib/message-author";
 import {
   Bot,
   User,
@@ -69,10 +69,7 @@ function normalizeContent(content: unknown): ContentBlock[] {
 
 export function MessageBubble({ line, filters }: Props) {
   const author = classifyAuthor(line);
-  const role = line.message?.role ?? (line.type as string);
-  const isUser = role === "user";
-  const isAssistant = role === "assistant";
-  const isSystem = !isUser && !isAssistant;
+  const textVisible = isAuthorTextVisible(author.kind, filters);
 
   const allBlocks = normalizeContent(line.message?.content);
   if (allBlocks.length === 0) return null;
@@ -80,12 +77,7 @@ export function MessageBubble({ line, filters }: Props) {
   // Apply filters to decide which blocks actually render.
   const blocks = allBlocks.filter((b) => {
     if (!b || typeof b !== "object") return false;
-    if (b.type === "text") {
-      if (isUser) return filters.showUser;
-      if (isAssistant) return filters.showAssistant;
-      if (isSystem) return filters.showSystem;
-      return true;
-    }
+    if (b.type === "text") return textVisible;
     if (b.type === "tool_use") return filters.showToolUses;
     if (b.type === "tool_result") return filters.showToolResults;
     return false;

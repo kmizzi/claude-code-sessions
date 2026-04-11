@@ -21,10 +21,35 @@ const GROUPS: Array<{ title: string; options: Option[] }> = [
   {
     title: "Messages",
     options: [
-      { key: "showUser", label: "Your prompts" },
+      { key: "showHuman", label: "Your prompts" },
       { key: "showAssistant", label: "Assistant replies" },
-      { key: "showSystem", label: "System / slash commands" },
       { key: "showSidechains", label: "Subagent runs" },
+    ],
+  },
+  {
+    title: "Claude Code noise",
+    options: [
+      {
+        key: "showCompactSummary",
+        label: "Compaction summaries",
+        hint: "Auto-generated when the session overflows",
+      },
+      {
+        key: "showTaskNotification",
+        label: "Background task notifications",
+        hint: "Results from `run_in_background` Bash calls",
+      },
+      {
+        key: "showSlashCommand",
+        label: "Slash command invocations",
+        hint: "e.g. /login, /compact",
+      },
+      {
+        key: "showCommandOutput",
+        label: "Command output / caveats",
+        hint: "Local command stdout & system context",
+      },
+      { key: "showSystem", label: "Raw system messages" },
     ],
   },
   {

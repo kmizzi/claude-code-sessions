@@ -4,6 +4,7 @@ import { useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { JsonlLine, ViewFilters } from "@/lib/types";
 import { MessageBubble } from "./message-bubble";
+import { classifyAuthor, isAuthorTextVisible } from "@/lib/message-author";
 import { Loader2 } from "lucide-react";
 
 interface Props {
@@ -22,13 +23,23 @@ export function Transcript({ lines, loading, error, filters }: Props) {
   const visible = useMemo(() => {
     return lines.filter((l) => {
       if (l.isSidechain && !filters.showSidechains) return false;
-      const role = l.message?.role ?? l.type;
-      if (role === "user" && !filters.showUser && !filters.showToolResults) return false;
-      if (role === "assistant" && !filters.showAssistant && !filters.showToolUses) return false;
-      if (role === "system" && !filters.showSystem) return false;
+      if (!(l.type === "user" || l.type === "assistant" || l.type === "system")) return false;
+      const content = l.message?.content;
+      if (content == null) return false;
+      const blocks = Array.isArray(content)
+        ? content
+        : typeof content === "string"
+          ? [{ type: "text" } as const]
+          : [];
+      const author = classifyAuthor(l);
+      const textVisible = isAuthorTextVisible(author.kind, filters);
+      const hasText = blocks.some((b) => (b as { type?: string })?.type === "text");
+      const hasToolUse = blocks.some((b) => (b as { type?: string })?.type === "tool_use");
+      const hasToolResult = blocks.some((b) => (b as { type?: string })?.type === "tool_result");
       return (
-        (l.type === "user" || l.type === "assistant" || l.type === "system") &&
-        l.message?.content != null
+        (hasText && textVisible) ||
+        (hasToolUse && filters.showToolUses) ||
+        (hasToolResult && filters.showToolResults)
       );
     });
   }, [lines, filters]);
