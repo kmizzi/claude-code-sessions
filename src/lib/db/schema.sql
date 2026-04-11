@@ -83,3 +83,17 @@ CREATE TABLE IF NOT EXISTS session_pins (
   pinned_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
   note TEXT
 );
+
+-- Process-liveness tracking. A background poller lists running `claude`
+-- processes every few seconds and records which session JSONL each one is
+-- writing to. Used by the "Recently active" panel to distinguish a session
+-- that's still open in a terminal pane (last_seen_alive recent) from one the
+-- user intentionally exited. Multiple rows dying within the same ~2s bucket
+-- indicate a terminal window/app close rather than an individual pane close.
+CREATE TABLE IF NOT EXISTS session_liveness (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  pid INTEGER,
+  first_seen_alive INTEGER NOT NULL,
+  last_seen_alive INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_session_liveness_last_seen ON session_liveness(last_seen_alive DESC);

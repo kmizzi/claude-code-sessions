@@ -812,5 +812,63 @@ export function getAnalytics(): import("@/lib/types").AnalyticsData {
   };
 }
 
+// ---------- Session liveness ----------
+
+export interface LivenessRow {
+  sessionId: string;
+  pid: number | null;
+  firstSeenAlive: number;
+  lastSeenAlive: number;
+}
+
+export function upsertLiveness(sessionId: string, pid: number | null, ts: number): void {
+  getDb()
+    .prepare(
+      `INSERT INTO session_liveness (session_id, pid, first_seen_alive, last_seen_alive)
+       VALUES (@session_id, @pid, @ts, @ts)
+       ON CONFLICT(session_id) DO UPDATE SET
+         pid = excluded.pid,
+         last_seen_alive = excluded.last_seen_alive`,
+    )
+    .run({ session_id: sessionId, pid, ts });
+}
+
+/** All liveness rows with last_seen_alive >= since, ordered newest first. */
+export function getLivenessSince(since: number): LivenessRow[] {
+  const rows = getDb()
+    .prepare<
+      { since: number },
+      { session_id: string; pid: number | null; first_seen_alive: number; last_seen_alive: number }
+    >(
+      `SELECT session_id, pid, first_seen_alive, last_seen_alive
+       FROM session_liveness
+       WHERE last_seen_alive >= @since
+       ORDER BY last_seen_alive DESC`,
+    )
+    .all({ since });
+  return rows.map((r) => ({
+    sessionId: r.session_id,
+    pid: r.pid,
+    firstSeenAlive: r.first_seen_alive,
+    lastSeenAlive: r.last_seen_alive,
+  }));
+}
+
+/** Fetch session rows by ID list, preserving input order. */
+export function getSessionsByIds(ids: string[]): SessionRow[] {
+  if (ids.length === 0) return [];
+  const db = getDb();
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db
+    .prepare<string[], SessionDbRow>(
+      `SELECT ${SESSION_COLUMNS}
+       FROM sessions s JOIN projects p ON p.id = s.project_id
+       WHERE s.id IN (${placeholders}) AND s.deleted_at IS NULL`,
+    )
+    .all(...ids);
+  const byId = new Map(rows.map((r) => [r.id, rowToSession(r)]));
+  return ids.map((id) => byId.get(id)).filter((s): s is SessionRow => s != null);
+}
+
 // Silence unused-import warning when VEC_DIMENSION isn't referenced in this file.
 void VEC_DIMENSION;
