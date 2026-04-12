@@ -41,7 +41,12 @@ export function iTerm2RestoreScript(
     const shellCmd = resumeCommand(ses.cwd, ses.id);
     const asStr = appleScriptString(shellCmd);
     if (i > 0) {
-      lines.push(`  set s to (tell s to split vertically with default profile)`);
+      // AppleScript rejects `set x to (tell y to ...)` — the `tell ... to`
+      // short form can't be nested inside a `set`. Enter a real tell block
+      // so we can capture the new session returned by `split vertically`.
+      lines.push(`  tell s`);
+      lines.push(`    set s to (split vertically with default profile)`);
+      lines.push(`  end tell`);
     }
     lines.push(`  tell s to write text ${asStr}`);
   });
