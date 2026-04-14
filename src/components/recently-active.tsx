@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Check, Copy, ExternalLink, Radio } from "lucide-react";
 import type { SessionRow } from "@/lib/types";
 import { relativeTime } from "@/lib/time";
-import { iTerm2RestoreScript, resumeCommand } from "@/lib/restore-commands";
+import { iTerm2RestoreScript } from "@/lib/restore-commands";
 
 interface ClusterDto {
   closedAt: number;
@@ -185,46 +185,41 @@ function ClusterSection({
 function SessionList({ sessions, copied, onCopy }: SectionProps) {
   return (
     <div className="space-y-1.5">
-      {sessions.map((s) => {
-        const cmd = s.cwd ? resumeCommand(s.cwd, s.id) : null;
-        return (
-          <div
-            key={s.id}
-            className="flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2 text-sm"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="truncate font-medium">{s.projectName}</span>
-                <span className="text-[10px] text-muted-foreground">
-                  {relativeTime(s.lastTs)}
-                </span>
-              </div>
-              {s.gist && (
-                <div className="truncate text-xs text-muted-foreground">{s.gist}</div>
-              )}
+      {sessions.map((s) => (
+        <div
+          key={s.id}
+          className="flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2 text-sm"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate font-medium">{s.projectName}</span>
+              <span className="text-[10px] text-muted-foreground">
+                {relativeTime(s.lastTs)}
+              </span>
             </div>
-            {cmd && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 gap-1 px-2 text-[11px] text-muted-foreground"
-                onClick={() => onCopy(cmd, s.id)}
-                title={cmd}
-              >
-                {copied === s.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                {copied === s.id ? "Copied" : "Copy resume"}
-              </Button>
+            {s.gist && (
+              <div className="truncate text-xs text-muted-foreground">{s.gist}</div>
             )}
-            <Link
-              href={`/sessions/${s.id}`}
-              className="text-muted-foreground hover:text-foreground"
-              title="Open session detail"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Link>
           </div>
-        );
-      })}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-[11px] text-muted-foreground"
+            onClick={() => onCopy(s.id, s.id)}
+            title={`Copy session ID: ${s.id}`}
+          >
+            {copied === s.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied === s.id ? "Copied" : "Copy session ID"}
+          </Button>
+          <Link
+            href={`/sessions/${s.id}`}
+            className="text-muted-foreground hover:text-foreground"
+            title="Open session detail"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      ))}
     </div>
   );
 }
