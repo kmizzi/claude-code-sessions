@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { StatsHeader } from "@/components/stats-header";
-import { RecentlyActive } from "@/components/recently-active";
 import { SearchBar, type SearchMode } from "@/components/search-bar";
 import { SessionListTable } from "@/components/session-list/table";
 import {
@@ -233,8 +232,6 @@ export default function HomePage() {
           </div>
 
           <StatsHeader stats={stats} />
-
-          <RecentlyActive refreshSignal={refreshTick} />
 
           <SearchBar
             value={query}
