@@ -80,6 +80,13 @@ export interface SessionAggregate {
   gist: string | null;
   durationMs: number | null;
   hasSubagents: boolean;
+  /**
+   * Concatenated text from every user + assistant content block in the file,
+   * joined with newlines. Powers the `messages_fts` index so keyword search
+   * finds words that appear anywhere in the conversation (not just the
+   * gist/first/last prompt fields). Not surfaced in `sessions` table or UI.
+   */
+  allMessageText: string;
 }
 
 /** Row returned to the UI for the session list. */

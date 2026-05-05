@@ -1,12 +1,13 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Transcript } from "@/components/session-detail/transcript";
+import { Transcript, type FindState } from "@/components/session-detail/transcript";
 import { MetadataSidebar } from "@/components/session-detail/metadata-sidebar";
 import { ViewFiltersPopover } from "@/components/session-detail/view-filters-popover";
+import { FindBar } from "@/components/session-detail/find-bar";
 import {
   DEFAULT_VIEW_FILTERS,
   type JsonlLine,
@@ -15,6 +16,10 @@ import {
 } from "@/lib/types";
 import { truncate } from "@/lib/utils";
 import { buildSessionMarkdown, downloadMarkdown } from "@/lib/export/markdown";
+import {
+  computeVisibleLines,
+  extractTranscriptText,
+} from "@/lib/transcript-visibility";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -47,6 +52,12 @@ export default function SessionDetailPage({ params }: PageProps) {
 
   const [filters, setFilters] = useState<ViewFilters>(DEFAULT_VIEW_FILTERS);
   const [filtersHydrated, setFiltersHydrated] = useState(false);
+
+  // Find-in-transcript state
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findCurrent, setFindCurrent] = useState(0);
+  const [findFocusTick, setFindFocusTick] = useState(0);
 
   // Hydrate filter state from localStorage on first client render.
   useEffect(() => {
@@ -121,6 +132,73 @@ export default function SessionDetailPage({ params }: PageProps) {
     downloadMarkdown(`session-${id.slice(0, 8)}.md`, md);
   }, [session, lines, filters, id]);
 
+  // Pre-filter lines once for both Transcript and find. Indices into `visible`
+  // are the source of truth for find match positions.
+  const visible = useMemo(
+    () => computeVisibleLines(lines, filters),
+    [lines, filters],
+  );
+
+  const matches = useMemo(() => {
+    const q = findQuery.trim().toLowerCase();
+    if (!q || !findOpen) return [] as { lineIdx: number; occurrenceInLine: number }[];
+    const out: { lineIdx: number; occurrenceInLine: number }[] = [];
+    for (let lineIdx = 0; lineIdx < visible.length; lineIdx++) {
+      const text = extractTranscriptText(visible[lineIdx], filters).toLowerCase();
+      if (!text) continue;
+      let i = 0;
+      let occ = 0;
+      while ((i = text.indexOf(q, i)) !== -1) {
+        out.push({ lineIdx, occurrenceInLine: occ });
+        i += q.length;
+        occ += 1;
+      }
+    }
+    return out;
+  }, [visible, filters, findQuery, findOpen]);
+
+  // Reset to first match whenever the result set changes (new query, filters,
+  // or content). Clamp to a valid index if it ran off the end.
+  useEffect(() => {
+    if (matches.length === 0) {
+      setFindCurrent(0);
+    } else if (findCurrent >= matches.length) {
+      setFindCurrent(0);
+    }
+  }, [matches.length, findCurrent]);
+
+  // ⌘F / Ctrl+F opens (or re-focuses) the find bar. Override the browser's
+  // default find since DOM virtualization makes it useless on long sessions.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFindOpen(true);
+        setFindFocusTick((t) => t + 1);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const findState: FindState | undefined = findOpen
+    ? {
+        query: findQuery.trim(),
+        matches,
+        current: matches.length > 0 ? Math.min(findCurrent, matches.length - 1) : -1,
+      }
+    : undefined;
+
+  const goNext = useCallback(() => {
+    if (matches.length === 0) return;
+    setFindCurrent((c) => (c + 1) % matches.length);
+  }, [matches.length]);
+  const goPrev = useCallback(() => {
+    if (matches.length === 0) return;
+    setFindCurrent((c) => (c - 1 + matches.length) % matches.length);
+  }, [matches.length]);
+  const closeFind = useCallback(() => setFindOpen(false), []);
+
   if (error) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background text-center text-sm text-rose-400">
@@ -179,13 +257,30 @@ export default function SessionDetailPage({ params }: PageProps) {
             </Button>
           </div>
         </header>
-        <div className="min-h-0 flex-1">
+        <div className="relative min-h-0 flex-1">
           <Transcript
-            lines={lines}
+            visible={visible}
             loading={linesLoading}
             error={linesError}
             filters={filters}
+            findState={findState}
           />
+          {findOpen && (
+            <FindBar
+              query={findQuery}
+              onQueryChange={setFindQuery}
+              current={
+                matches.length > 0
+                  ? Math.min(findCurrent, matches.length - 1) + 1
+                  : 0
+              }
+              total={matches.length}
+              onNext={goNext}
+              onPrev={goPrev}
+              onClose={closeFind}
+              focusTick={findFocusTick}
+            />
+          )}
         </div>
       </main>
       <MetadataSidebar session={session} />

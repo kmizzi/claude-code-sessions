@@ -50,6 +50,18 @@ const TONE_CLASSES: Record<AuthorKind, string> = {
 interface Props {
   line: JsonlLine;
   filters: ViewFilters;
+  /**
+   * Active find-in-transcript state for this bubble. `query` is the search
+   * string (may be empty when find is closed). `currentOccurrenceInLine` is
+   * the 0-based index of the match that should be styled as the "current"
+   * one — null means this bubble has no current match (just plain
+   * highlights). The index counts occurrences across all of this line's
+   * text blocks combined.
+   */
+  highlight?: {
+    query: string;
+    currentOccurrenceInLine: number | null;
+  };
 }
 
 type ContentBlock = {
@@ -69,7 +81,58 @@ function normalizeContent(content: unknown): ContentBlock[] {
   return [];
 }
 
-export function MessageBubble({ line, filters }: Props) {
+function renderHighlightedText(
+  text: string,
+  query: string,
+  currentLocalOccurrence: number | null,
+): React.ReactNode {
+  if (!query) return text;
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  let occ = 0;
+  while (i <= text.length) {
+    const idx = lowerText.indexOf(lowerQuery, i);
+    if (idx === -1) {
+      if (i < text.length) parts.push(text.slice(i));
+      break;
+    }
+    if (idx > i) parts.push(text.slice(i, idx));
+    const isCurrent = currentLocalOccurrence === occ;
+    parts.push(
+      <mark
+        key={`m-${idx}`}
+        data-find-current={isCurrent ? "true" : undefined}
+        className={
+          isCurrent
+            ? "rounded-sm bg-amber-300 px-0.5 text-black ring-2 ring-amber-200"
+            : "rounded-sm bg-amber-300/30 px-0.5 text-foreground"
+        }
+      >
+        {text.slice(idx, idx + query.length)}
+      </mark>,
+    );
+    i = idx + query.length;
+    occ += 1;
+  }
+  return parts;
+}
+
+function countOccurrences(text: string, query: string): number {
+  if (!query) return 0;
+  const lower = text.toLowerCase();
+  const lq = query.toLowerCase();
+  let n = 0;
+  let i = 0;
+  while ((i = lower.indexOf(lq, i)) !== -1) {
+    n += 1;
+    i += lq.length;
+  }
+  return n;
+}
+
+export function MessageBubble({ line, filters, highlight }: Props) {
   const author = classifyAuthor(line);
   const textVisible = isAuthorTextVisible(author.kind, filters);
 
@@ -143,40 +206,62 @@ export function MessageBubble({ line, filters }: Props) {
           )}
         </div>
         <div className="space-y-1.5 text-[15px] leading-relaxed">
-          {blocks.map((block, i) => {
-            if (!block || typeof block !== "object") return null;
-            if (block.type === "text" && block.text) {
-              return (
-                <div
-                  key={i}
-                  className="whitespace-pre-wrap break-words text-foreground/90"
-                >
-                  {block.text}
-                </div>
-              );
-            }
-            if (block.type === "tool_use") {
-              return (
-                <ToolUseBlock
-                  key={i}
-                  name={block.name ?? "tool"}
-                  input={block.input}
-                  defaultOpen={filters.expandTools}
-                />
-              );
-            }
-            if (block.type === "tool_result") {
-              return (
-                <ToolResultBlock
-                  key={i}
-                  content={block.content}
-                  isError={block.is_error}
-                  defaultOpen={filters.expandTools}
-                />
-              );
-            }
-            return null;
-          })}
+          {(() => {
+            // Walk text blocks once to figure out which one (if any) contains
+            // the "current" find match. We track running occurrence count so
+            // each block can render its own slice of highlights with the right
+            // local "current" index.
+            const q = highlight?.query ?? "";
+            const target = highlight?.currentOccurrenceInLine ?? null;
+            let runningOcc = 0;
+            return blocks.map((block, i) => {
+              if (!block || typeof block !== "object") return null;
+              if (block.type === "text" && block.text) {
+                const text = block.text;
+                let body: React.ReactNode = text;
+                if (q) {
+                  const blockCount = countOccurrences(text, q);
+                  const localCurrent =
+                    target != null &&
+                    target >= runningOcc &&
+                    target < runningOcc + blockCount
+                      ? target - runningOcc
+                      : null;
+                  body = renderHighlightedText(text, q, localCurrent);
+                  runningOcc += blockCount;
+                }
+                return (
+                  <div
+                    key={i}
+                    className="whitespace-pre-wrap break-words text-foreground/90"
+                  >
+                    {body}
+                  </div>
+                );
+              }
+              if (block.type === "tool_use") {
+                return (
+                  <ToolUseBlock
+                    key={i}
+                    name={block.name ?? "tool"}
+                    input={block.input}
+                    defaultOpen={filters.expandTools}
+                  />
+                );
+              }
+              if (block.type === "tool_result") {
+                return (
+                  <ToolResultBlock
+                    key={i}
+                    content={block.content}
+                    isError={block.is_error}
+                    defaultOpen={filters.expandTools}
+                  />
+                );
+              }
+              return null;
+            });
+          })()}
         </div>
       </div>
     </div>

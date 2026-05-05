@@ -8,7 +8,11 @@ import { APP_DB_PATH, ensureAppDirs } from "@/lib/paths";
 let _db: Database.Database | null = null;
 let _vecLoaded = false;
 
-const SCHEMA_VERSION = "1";
+// Bump this whenever the FTS or denormalized columns change in a way that
+// requires re-indexing every JSONL file. The startup migration below clears
+// `index_state` on mismatch so the backfill walks every file again.
+//   v1 → v2: added messages_fts (full-message keyword index).
+const SCHEMA_VERSION = "2";
 const VEC_DIM = 384;
 
 function schemaPath(): string {
@@ -59,12 +63,22 @@ export function getDb(): Database.Database {
     }
   }
 
-  // Seed schema version
+  // Schema version migration: when SCHEMA_VERSION moves forward, force a full
+  // reindex by clearing index_state. The backfill on next boot will then walk
+  // every JSONL file and repopulate the FTS tables. Sessions stay readable
+  // throughout — old rows just don't pick up new FTS columns until reindexed.
   const meta = db.prepare<{ key: string }, { value: string }>(
     "SELECT value FROM app_meta WHERE key = @key",
   );
   const insertMeta = db.prepare<[string, string]>("INSERT OR REPLACE INTO app_meta VALUES (?, ?)");
-  if (!meta.get({ key: "schema_version" })) {
+  const stored = meta.get({ key: "schema_version" })?.value;
+  if (!stored) {
+    insertMeta.run("schema_version", SCHEMA_VERSION);
+  } else if (stored !== SCHEMA_VERSION) {
+    console.warn(
+      `[db] schema version ${stored} → ${SCHEMA_VERSION}: clearing index_state to force full reindex`,
+    );
+    db.exec("DELETE FROM index_state");
     insertMeta.run("schema_version", SCHEMA_VERSION);
   }
 

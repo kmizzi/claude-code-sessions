@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -77,14 +78,44 @@ const GROUPS: Array<{ title: string; options: Option[] }> = [
 
 export function ViewFiltersPopover({ filters, onChange }: Props) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+
+  // Position the panel relative to the trigger button. We portal the panel to
+  // <body> so it can't be clipped by any ancestor's stacking context or
+  // overflow — but that means we need to compute its absolute position
+  // ourselves. Recompute on resize/scroll while open.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPos({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
+      const target = e.target as Node;
+      if (
+        (triggerRef.current && triggerRef.current.contains(target)) ||
+        (panelRef.current && panelRef.current.contains(target))
+      ) {
+        return;
       }
+      setOpen(false);
     };
     const esc = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -99,8 +130,71 @@ export function ViewFiltersPopover({ filters, onChange }: Props) {
 
   const activeCount = Object.values(filters).filter(Boolean).length;
 
+  const panel =
+    open && pos
+      ? createPortal(
+          <div
+            ref={panelRef}
+            style={{ top: pos.top, right: pos.right }}
+            className="fixed z-[1000] w-64 select-text rounded-md border border-border/60 bg-popover p-3 text-popover-foreground shadow-lg"
+          >
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Visible elements
+            </div>
+            <div className="space-y-3">
+              {GROUPS.map((group) => (
+                <div key={group.title}>
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                    {group.title}
+                  </div>
+                  <div className="space-y-0.5">
+                    {group.options.map((opt) => {
+                      const checked = filters[opt.key];
+                      const id = `vf-${opt.key}`;
+                      return (
+                        <div
+                          key={opt.key}
+                          className={cn(
+                            "flex items-start gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted/40",
+                            !checked && "text-muted-foreground",
+                          )}
+                        >
+                          <input
+                            id={id}
+                            type="checkbox"
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-[hsl(var(--brand))]"
+                            checked={checked}
+                            onChange={(e) =>
+                              onChange({ ...filters, [opt.key]: e.target.checked })
+                            }
+                          />
+                          <div className="flex-1 leading-tight">
+                            <label htmlFor={id} className="cursor-pointer">
+                              {opt.label}
+                            </label>
+                            {opt.hint && (
+                              <div className="text-[10px] text-muted-foreground">
+                                {opt.hint}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 border-t border-border/50 pt-2 text-[10px] text-muted-foreground">
+              Export matches what you see.
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div ref={ref} className="relative">
+    <div ref={triggerRef} className="relative">
       <Button
         variant="outline"
         size="sm"
@@ -111,57 +205,7 @@ export function ViewFiltersPopover({ filters, onChange }: Props) {
         View
         <span className="text-muted-foreground">{activeCount}</span>
       </Button>
-
-      {open && (
-        <div className="absolute right-0 z-50 mt-2 w-64 rounded-md border border-border/60 bg-popover p-3 shadow-lg">
-          <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Visible elements
-          </div>
-          <div className="space-y-3">
-            {GROUPS.map((group) => (
-              <div key={group.title}>
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                  {group.title}
-                </div>
-                <div className="space-y-0.5">
-                  {group.options.map((opt) => {
-                    const checked = filters[opt.key];
-                    return (
-                      <label
-                        key={opt.key}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted/40",
-                          !checked && "text-muted-foreground",
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-[hsl(var(--brand))]"
-                          checked={checked}
-                          onChange={(e) =>
-                            onChange({ ...filters, [opt.key]: e.target.checked })
-                          }
-                        />
-                        <span className="flex-1 leading-tight">
-                          <span>{opt.label}</span>
-                          {opt.hint && (
-                            <span className="block text-[10px] text-muted-foreground">
-                              {opt.hint}
-                            </span>
-                          )}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 border-t border-border/50 pt-2 text-[10px] text-muted-foreground">
-            Export matches what you see.
-          </div>
-        </div>
-      )}
+      {panel}
     </div>
   );
 }

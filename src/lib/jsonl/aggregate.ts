@@ -40,13 +40,16 @@ export async function buildSessionAggregate(filePath: string): Promise<SessionAg
     gist: null,
     durationMs: null,
     hasSubagents: false,
+    allMessageText: "",
   };
 
   const modelCounts = new Map<string, number>();
+  // Buffer message text into an array; one final join() avoids O(N²) string concat.
+  const messageTexts: string[] = [];
 
   try {
     for await (const { line } of streamJsonl(filePath)) {
-      consume(line, agg, modelCounts);
+      consume(line, agg, modelCounts, messageTexts);
     }
   } catch (err) {
     // Return what we have so far — indexer will record the error on index_state
@@ -72,6 +75,8 @@ export async function buildSessionAggregate(filePath: string): Promise<SessionAg
     agg.durationMs = agg.lastTs - agg.firstTs;
   }
 
+  agg.allMessageText = messageTexts.join("\n");
+
   // Subagents subdirectory sibling?
   try {
     const sidecar = statSync(filePath.replace(/\.jsonl$/, ""));
@@ -89,6 +94,7 @@ function consume(
   line: JsonlLine,
   agg: SessionAggregate,
   modelCounts: Map<string, number>,
+  messageTexts: string[],
 ): void {
   // Session-level fields — set once from whichever line has them first
   if (!agg.cwd && typeof line.cwd === "string") agg.cwd = line.cwd;
@@ -114,6 +120,7 @@ function consume(
     if (text) {
       if (!agg.firstUserPrompt) agg.firstUserPrompt = text;
       agg.lastUserPrompt = text;
+      messageTexts.push(text);
     }
     return;
   }
@@ -129,6 +136,8 @@ function consume(
     if (typeof model === "string" && model) {
       modelCounts.set(model, (modelCounts.get(model) ?? 0) + 1);
     }
+    const text = extractText(line.message?.content).trim();
+    if (text) messageTexts.push(text);
     const u = line.message?.usage;
     if (u) {
       agg.inputTokens += u.input_tokens ?? 0;

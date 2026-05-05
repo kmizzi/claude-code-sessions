@@ -163,6 +163,11 @@ const UPSERT_FTS_SQL = `
 `;
 const DELETE_FTS_SQL = `DELETE FROM sessions_fts WHERE session_id = ?`;
 
+const UPSERT_MESSAGES_FTS_SQL = `
+  INSERT INTO messages_fts (session_id, content) VALUES (?, ?)
+`;
+const DELETE_MESSAGES_FTS_SQL = `DELETE FROM messages_fts WHERE session_id = ?`;
+
 export function upsertSession(
   db: Database.Database,
   agg: SessionAggregate,
@@ -205,6 +210,12 @@ export function upsertSession(
     agg.cwd ?? "",
     agg.gitBranch ?? "",
   );
+
+  // Rebuild full-message FTS row
+  db.prepare(DELETE_MESSAGES_FTS_SQL).run(agg.sessionId);
+  if (agg.allMessageText) {
+    db.prepare(UPSERT_MESSAGES_FTS_SQL).run(agg.sessionId, agg.allMessageText);
+  }
 }
 
 // ---------- Project session count recompute ----------
@@ -474,13 +485,29 @@ export function keywordSearch(query: string, limit = 50): SessionRow[] {
   const db = getDb();
   const cleaned = sanitizeFtsQuery(query);
   if (!cleaned) return [];
+  // Search both indexes and pick the better (lower) rank per session. The
+  // sessions_fts rank uses BM25 weights that already favor the gist + prompts;
+  // hits that come only from messages_fts get a constant penalty so a
+  // first/last prompt match still outranks a mid-conversation match.
+  const MESSAGES_RANK_PENALTY = 2.0;
   const sql = `
-    SELECT ${SESSION_COLUMNS},
-      bm25(sessions_fts, 10.0, 5.0, 5.0, 1.0, 1.0) AS rank
-    FROM sessions_fts
-    JOIN sessions s ON s.id = sessions_fts.session_id
+    WITH hits AS (
+      SELECT session_id,
+             bm25(sessions_fts, 10.0, 5.0, 5.0, 1.0, 1.0) AS rank
+      FROM sessions_fts
+      WHERE sessions_fts MATCH @q
+      UNION ALL
+      SELECT session_id,
+             bm25(messages_fts) + ${MESSAGES_RANK_PENALTY} AS rank
+      FROM messages_fts
+      WHERE messages_fts MATCH @q
+    )
+    SELECT ${SESSION_COLUMNS}, MIN(h.rank) AS rank
+    FROM hits h
+    JOIN sessions s ON s.id = h.session_id
     JOIN projects p ON p.id = s.project_id
-    WHERE sessions_fts MATCH @q AND s.deleted_at IS NULL
+    WHERE s.deleted_at IS NULL
+    GROUP BY s.id
     ORDER BY rank
     LIMIT @limit
   `;

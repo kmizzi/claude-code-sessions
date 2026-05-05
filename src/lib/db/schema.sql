@@ -58,6 +58,17 @@ CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
   tokenize = 'porter unicode61 remove_diacritics 2'
 );
 
+-- Per-session full-message FTS so search hits assistant replies and middle
+-- prompts, not just the first/last user message that lives on `sessions`.
+-- Stored at session-grain (one row per session) with all text content blocks
+-- joined — keeps storage and query cost reasonable while making any keyword
+-- the user mentioned anywhere in the conversation findable.
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+  session_id UNINDEXED,
+  content,
+  tokenize = 'porter unicode61 remove_diacritics 2'
+);
+
 -- Track where we left off on each file so incremental reads can resume.
 CREATE TABLE IF NOT EXISTS index_state (
   file_path TEXT PRIMARY KEY,
