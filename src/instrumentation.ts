@@ -21,9 +21,10 @@ export async function register(): Promise<void> {
   // Start watcher immediately so live sessions stream in
   startWatcher();
 
-  // Poll running `claude` processes for liveness (crash-recovery signal).
-  const { startLivenessPoller } = await import("@/lib/liveness/poller");
-  startLivenessPoller();
+  // Liveness (running-`claude` crash-recovery signal) is no longer polled on a
+  // background timer — it's refreshed on demand from the /api/live-sessions
+  // request path (see ensureFreshLiveness), so no `lsof` runs unless the
+  // dashboard is open and asking.
 
   // Kick backfill only if the DB is empty or stale; run async so we don't block boot
   const already = countIndexedFiles();

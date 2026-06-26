@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getLivenessSince, getSessionsByIds } from "@/lib/db/queries";
+import { ensureFreshLiveness } from "@/lib/liveness/poller";
 import type { SessionRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,10 @@ interface Cluster {
 }
 
 export async function GET(): Promise<Response> {
+  // Refresh liveness on demand (TTL-cached + single-flighted) before reading.
+  // This is the only place the `claude`/`lsof` scan is triggered now.
+  await ensureFreshLiveness();
+
   const now = Date.now();
   const since = now - CLOSED_LOOKBACK_MS;
   const rows = getLivenessSince(since);

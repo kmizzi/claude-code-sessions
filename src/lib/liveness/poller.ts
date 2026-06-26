@@ -22,7 +22,14 @@ import { CLAUDE_PROJECTS } from "@/lib/paths";
 import { encodePathForClaude } from "@/lib/indexer/encode-path";
 import { upsertLiveness } from "@/lib/db/queries";
 
-const POLL_INTERVAL_MS = 5_000;
+// On-demand refresh window. The client polls /api/live-sessions every 5s; a TTL
+// just under that coalesces rapid / multi-tab polling into one scan per window.
+const LIVENESS_TTL_MS = 4_000;
+
+// Hard ceiling on any spawned command. A hung `lsof` (e.g. under heavy load or a
+// wedged proc-table lock) is SIGKILLed rather than lingering — the missing
+// timeout is what let stuck lsof accumulate for 10+ minutes previously.
+const CMD_TIMEOUT_MS = 4_000;
 
 // Resolve binaries by absolute path. launchd daemons run with a minimal PATH
 // that omits /usr/sbin, where lsof lives on macOS — spawning by bare name
@@ -30,28 +37,33 @@ const POLL_INTERVAL_MS = 5_000;
 const PGREP_BIN = "/usr/bin/pgrep";
 const LSOF_BIN = "/usr/sbin/lsof";
 
-let timer: ReturnType<typeof setInterval> | null = null;
+let lastRun = 0;
+let inFlight: Promise<void> | null = null;
 
-export function startLivenessPoller(): void {
-  if (timer) return;
-  // Run an initial pass immediately so the first dashboard load has data.
-  void pollOnce().catch((err) => {
-    console.warn("[liveness] initial poll failed:", err);
-  });
-  timer = setInterval(() => {
-    void pollOnce().catch((err) => {
-      console.warn("[liveness] poll failed:", err);
+/**
+ * Refresh liveness on demand — called from the /api/live-sessions request path
+ * instead of a background setInterval. No `pgrep`/`lsof` runs unless the
+ * dashboard is actually open and asking. Two safeguards make it safe to call on
+ * every poll from every open tab:
+ *   - TTL cache: a scan within the last LIVENESS_TTL_MS is reused, so rapid /
+ *     multi-tab polling collapses to at most one scan per window.
+ *   - Single-flight: concurrent callers await the in-flight scan instead of each
+ *     spawning their own `lsof`. This is what prevents the runaway pileup that
+ *     the old unguarded interval produced once a scan ran longer than the tick.
+ * lastRun is stamped on completion, so a slow scan naturally backs off the rate.
+ */
+export async function ensureFreshLiveness(): Promise<void> {
+  if (Date.now() - lastRun < LIVENESS_TTL_MS) return;
+  if (inFlight) return inFlight;
+  inFlight = pollOnce()
+    .catch((err) => {
+      console.warn("[liveness] refresh failed:", err);
+    })
+    .finally(() => {
+      lastRun = Date.now();
+      inFlight = null;
     });
-  }, POLL_INTERVAL_MS);
-  // Allow the process to exit if this is the only thing keeping the loop alive.
-  timer.unref?.();
-}
-
-export function stopLivenessPoller(): void {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
+  return inFlight;
 }
 
 async function pollOnce(): Promise<void> {
@@ -152,10 +164,22 @@ function runCmd(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
+    let settled = false;
+    const finish = (val: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killer);
+      resolve(val);
+    };
+    // Never let a spawned command outlive the timeout — SIGKILL and move on.
+    const killer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish("");
+    }, CMD_TIMEOUT_MS);
     child.stdout.on("data", (buf) => {
       out += buf.toString();
     });
-    child.on("error", () => resolve(""));
-    child.on("close", () => resolve(out));
+    child.on("error", () => finish(""));
+    child.on("close", () => finish(out));
   });
 }
