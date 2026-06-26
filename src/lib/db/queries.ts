@@ -518,12 +518,17 @@ export function keywordSearch(query: string, limit = 50): SessionRow[] {
 }
 
 function sanitizeFtsQuery(query: string): string {
-  // Keep letters, numbers, spaces, a few operators.
-  const cleaned = query.trim().replace(/["'\-\(\)]/g, " ").replace(/\s+/g, " ").trim();
+  // FTS5's unicode tokenizer splits indexed content on punctuation, so we mirror
+  // that here: treat every non-alphanumeric character as a token separator. This
+  // keeps letters/numbers (including non-ASCII, e.g. "café") and discards FTS5
+  // operators and punctuation. Previously only a handful of chars were stripped,
+  // so input like "foo,bar" / "a:b" / "x.y" reached FTS5 as a bareword token and
+  // threw "fts5: syntax error near ...".
+  const cleaned = query.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   if (!cleaned) return "";
   // Wrap each token as a prefix match so partial words still hit (e.g. "auth" -> "auth*")
   return cleaned
-    .split(" ")
+    .split(/\s+/)
     .filter(Boolean)
     .map((t) => `${t}*`)
     .join(" ");
